@@ -1,0 +1,11 @@
+pre-commit:
+  commands:
+    biome-format:
+      glob: "*.{ts,tsx,js,jsx,json}"
+      run: bunx biome format --write {staged_files} && git add {staged_files}
+
+    biome-lint:
+      run: bunx biome lint .
+
+    typecheck:
+      run: bun run check
