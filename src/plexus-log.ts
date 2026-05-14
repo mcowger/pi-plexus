@@ -9,7 +9,7 @@ const getCacheDir = (): string => join(getAgentDir(), "extensions", "plexus");
 export const log = (message: string, data?: Record<string, unknown>): void => {
 	try {
 		mkdirSync(getCacheDir(), { recursive: true });
-		const line = `${new Date().toISOString()} ${message}${data ? " " + JSON.stringify(data) : ""}\n`;
+		const line = `${new Date().toISOString()} ${message}${data ? ` ${JSON.stringify(data)}` : ""}\n`;
 		appendFileSync(getLogPath(), line, "utf8");
 	} catch {
 		// never throw from logging

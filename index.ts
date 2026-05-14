@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ProviderConfig } from "@earendil-works/pi-coding-agent";
 import type { Api } from "@earendil-works/pi-ai";
-import { readCachedModels, readCachedModelsSync, writeCachedModels, writeRawResponse } from "./src/plexus-cache.js";
+import { readCachedModelsSync, writeCachedModels, writeRawResponse } from "./src/plexus-cache.js";
 import { getBaseUrl, getBaseUrlSync, getModelsUrl, saveBaseUrl } from "./src/plexus-config.js";
 import { log } from "./src/plexus-log.js";
 import { convertModels, fetchPlexusModels } from "./src/plexus-models.js";
