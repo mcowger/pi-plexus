@@ -1,5 +1,11 @@
 import { getModel } from "@earendil-works/pi-ai";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type {
+	Api,
+	Model,
+	OpenAICompletionsCompat,
+	OpenAIResponsesCompat,
+	AnthropicMessagesCompat,
+} from "@earendil-works/pi-ai";
 
 export interface PlexusModelArchitecture {
 	modality?: string;
@@ -105,12 +111,126 @@ const lookupPiModel = (piProvider?: string, piModel?: string): Model<Api> | null
 	return getModel(piProvider as any, piModel as any) ?? null;
 };
 
+/**
+ * Detect OpenAI completions compat settings from the provider and baseUrl of a
+ * pi model definition. This mirrors the internal detectCompat() in pi's
+ * openai-completions provider so that we can produce a fully-resolved compat
+ * object for plexus-proxied models.
+ *
+ * Without this, providers like deepseek that are proxied through plexus won't
+ * get the correct implied compat (e.g. supportsDeveloperRole: false) because
+ * pi's runtime auto-detection checks model.provider and model.baseUrl, which
+ * are "plexus" and the plexus URL — not the original provider.
+ */
+const detectOpenAICompletionsCompat = (piModel: Model<Api>): OpenAICompletionsCompat => {
+	const provider = piModel.provider;
+	const baseUrl = piModel.baseUrl;
+
+	const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
+	const isMoonshot = provider === "moonshotai" || provider === "moonshotai-cn" || baseUrl.includes("api.moonshot.");
+	const isCloudflareWorkersAI = provider === "cloudflare-workers-ai" || baseUrl.includes("api.cloudflare.com");
+	const isCloudflareAiGateway = provider === "cloudflare-ai-gateway" || baseUrl.includes("gateway.ai.cloudflare.com");
+	const isNonStandard =
+		provider === "cerebras" ||
+		baseUrl.includes("cerebras.ai") ||
+		provider === "xai" ||
+		baseUrl.includes("api.x.ai") ||
+		baseUrl.includes("chutes.ai") ||
+		baseUrl.includes("deepseek.com") ||
+		isZai ||
+		isMoonshot ||
+		provider === "opencode" ||
+		baseUrl.includes("opencode.ai") ||
+		isCloudflareWorkersAI ||
+		isCloudflareAiGateway;
+	const useMaxTokens = baseUrl.includes("chutes.ai") || isMoonshot || isCloudflareAiGateway;
+	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
+	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
+	const cacheControlFormat = provider === "openrouter" && piModel.id.startsWith("anthropic/") ? "anthropic" : undefined;
+
+	const detected: OpenAICompletionsCompat = {
+		supportsStore: !isNonStandard,
+		supportsDeveloperRole: !isNonStandard,
+		supportsReasoningEffort: !isGrok && !isZai && !isMoonshot && !isCloudflareAiGateway,
+		supportsUsageInStreaming: true,
+		maxTokensField: useMaxTokens ? "max_tokens" : "max_completion_tokens",
+		requiresToolResultName: false,
+		requiresAssistantAfterToolResult: false,
+		requiresThinkingAsText: false,
+		requiresReasoningContentOnAssistantMessages: isDeepSeek,
+		thinkingFormat: isDeepSeek
+			? "deepseek"
+			: isZai
+				? "zai"
+				: provider === "openrouter" || baseUrl.includes("openrouter.ai")
+					? "openrouter"
+					: "openai",
+		openRouterRouting: {},
+		vercelGatewayRouting: {},
+		zaiToolStream: false,
+		supportsStrictMode: !isMoonshot && !isCloudflareAiGateway,
+		cacheControlFormat,
+		sendSessionAffinityHeaders: false,
+		supportsLongCacheRetention: !(isCloudflareWorkersAI || isCloudflareAiGateway),
+	};
+
+	return detected;
+};
+
+/**
+ * Resolve a fully-specified compat object for a plexus-proxied model by
+ * merging the pi model's stored compat overrides onto the detected defaults
+ * from the pi model's original provider/baseUrl.
+ *
+ * This produces the same result that pi's getCompat() would compute for the
+ * original model, ensuring that implied compat fields (like
+ * supportsDeveloperRole: false for deepseek) are correct even though the
+ * plexus model has provider="plexus" and a plexus baseUrl.
+ */
+const resolveCompat = (
+	piModel: Model<Api>,
+): OpenAICompletionsCompat | OpenAIResponsesCompat | AnthropicMessagesCompat | undefined => {
+	if (piModel.api === "openai-completions") {
+		const detected = detectOpenAICompletionsCompat(piModel);
+		const overrides = piModel.compat as OpenAICompletionsCompat | undefined;
+		if (!overrides) return detected;
+		return {
+			supportsStore: overrides.supportsStore ?? detected.supportsStore,
+			supportsDeveloperRole: overrides.supportsDeveloperRole ?? detected.supportsDeveloperRole,
+			supportsReasoningEffort: overrides.supportsReasoningEffort ?? detected.supportsReasoningEffort,
+			supportsUsageInStreaming: overrides.supportsUsageInStreaming ?? detected.supportsUsageInStreaming,
+			maxTokensField: overrides.maxTokensField ?? detected.maxTokensField,
+			requiresToolResultName: overrides.requiresToolResultName ?? detected.requiresToolResultName,
+			requiresAssistantAfterToolResult:
+				overrides.requiresAssistantAfterToolResult ?? detected.requiresAssistantAfterToolResult,
+			requiresThinkingAsText: overrides.requiresThinkingAsText ?? detected.requiresThinkingAsText,
+			requiresReasoningContentOnAssistantMessages:
+				overrides.requiresReasoningContentOnAssistantMessages ?? detected.requiresReasoningContentOnAssistantMessages,
+			thinkingFormat: overrides.thinkingFormat ?? detected.thinkingFormat,
+			openRouterRouting: overrides.openRouterRouting ?? detected.openRouterRouting,
+			vercelGatewayRouting: overrides.vercelGatewayRouting ?? detected.vercelGatewayRouting,
+			zaiToolStream: overrides.zaiToolStream ?? detected.zaiToolStream,
+			supportsStrictMode: overrides.supportsStrictMode ?? detected.supportsStrictMode,
+			cacheControlFormat: overrides.cacheControlFormat ?? detected.cacheControlFormat,
+			sendSessionAffinityHeaders: overrides.sendSessionAffinityHeaders ?? detected.sendSessionAffinityHeaders,
+			supportsLongCacheRetention: overrides.supportsLongCacheRetention ?? detected.supportsLongCacheRetention,
+		};
+	}
+
+	// For other APIs, fall back to the stored compat as-is.
+	// At runtime, pi's provider will still merge with detected defaults,
+	// but the plexus baseUrl won't match any known provider patterns,
+	// so defaults are generally safe for anthropic-messages and openai-responses.
+	return piModel.compat;
+};
+
 export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiModel => {
 	const piModelDef = lookupPiModel(apiModel.pi_provider, apiModel.pi_model);
 
 	// When pi's MODELS has this model, use its curated definition for maximum fidelity,
 	// overriding with plexus-specific fields (id, provider, baseUrl, cost from plexus pricing).
 	if (piModelDef) {
+		const resolvedCompat = resolveCompat(piModelDef);
 		return {
 			id: apiModel.id,
 			name: apiModel.name ?? piModelDef.name ?? apiModel.id,
@@ -128,7 +248,7 @@ export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiM
 			},
 			contextWindow: piModelDef.contextWindow,
 			maxTokens: piModelDef.maxTokens,
-			...(piModelDef.compat && { compat: piModelDef.compat }),
+			...(resolvedCompat && { compat: resolvedCompat }),
 		};
 	}
 

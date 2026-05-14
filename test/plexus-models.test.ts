@@ -278,10 +278,15 @@ describe("pi_provider/pi_model MODELS lookup", () => {
 		expect(m.provider).toBe("plexus");
 		expect(m.baseUrl).toBe(BASE_URL);
 
-		// Compat from pi's definition
+		// Compat fully resolved from pi's definition + auto-detection against deepseek provider
 		expect(m.compat).toBeDefined();
 		expect(m.compat?.thinkingFormat).toBe("deepseek");
 		expect(m.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+		// Key: supportsDeveloperRole is resolved to false because deepseek is detected
+		// as a non-standard provider, even though we're proxied through plexus.
+		// This prevents pi from sending 'developer' role instead of 'system'.
+		expect(m.compat?.supportsDeveloperRole).toBe(false);
+		expect(m.compat?.supportsStore).toBe(false);
 
 		// Thinking level map from pi's definition
 		expect(m.thinkingLevelMap).toBeDefined();
@@ -472,9 +477,11 @@ describe("models.json fixture", () => {
 		expect(ds?.contextWindow).toBe(1000000);
 		expect(ds?.maxTokens).toBe(384000);
 
-		// Compat from pi
+		// Compat fully resolved — includes both overrides and auto-detected defaults
 		expect(ds?.compat?.thinkingFormat).toBe("deepseek");
 		expect(ds?.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+		expect(ds?.compat?.supportsDeveloperRole).toBe(false);
+		expect(ds?.compat?.supportsStore).toBe(false);
 
 		// ThinkingLevelMap from pi
 		expect(ds?.thinkingLevelMap?.high).toBe("high");
