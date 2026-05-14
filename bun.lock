@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "pi-provider-plexus",
+      "name": "pi-plexus",
       "devDependencies": {
         "@biomejs/biome": "2.4.14",
         "lefthook": "2.1.6",
