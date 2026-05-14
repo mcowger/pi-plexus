@@ -492,17 +492,18 @@ describe("models.json fixture", () => {
 		expect(haiku?.api).toBe("anthropic-messages");
 		expect(haiku?.reasoning).toBe(true);
 		expect(haiku?.input).toContain("image");
-	}),
-		test("claude-sonnet-4-6 (no pi_provider) uses plexus fallback", () => {
-			const models = convertModels(MODELS_JSON.data, BASE_URL);
-			const sonnet = models.find((m) => m.id === "claude-sonnet-4-6");
-			expect(sonnet).toBeDefined();
-			// No pi_provider/pi_model, so no compat from pi
-			expect(sonnet?.compat).toBeUndefined();
-			expect(sonnet?.thinkingLevelMap).toBeUndefined();
-			// But plexus fields still work
-			expect(sonnet?.contextWindow).toBe(1000000);
-		});
+	});
+
+	test("claude-sonnet-4-6 (no pi_provider) uses plexus fallback", () => {
+		const models = convertModels(MODELS_JSON.data, BASE_URL);
+		const sonnet = models.find((m) => m.id === "claude-sonnet-4-6");
+		expect(sonnet).toBeDefined();
+		// No pi_provider/pi_model, so no compat from pi
+		expect(sonnet?.compat).toBeUndefined();
+		expect(sonnet?.thinkingLevelMap).toBeUndefined();
+		// But plexus fields still work
+		expect(sonnet?.contextWindow).toBe(1000000);
+	});
 
 	test("qwen3.5-plus-02-15 (sparse model) gets safe defaults from plexus fallback", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
@@ -524,7 +525,7 @@ describe("models.json fixture", () => {
 	test("models with pi_provider/pi_model have compat; others don't", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
 		const withCompat = models.filter((m) => m.compat);
-		const withoutCompat = models.filter((m) => !m.compat);
+		const _withoutCompat = models.filter((m) => !m.compat);
 
 		// Only deepseek-v4-flash has pi_provider/pi_model pointing to a compat-bearing model
 		const compatIds = withCompat.map((m) => m.id).sort();

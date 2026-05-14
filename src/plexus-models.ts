@@ -99,6 +99,9 @@ const inferReasoning = (supported_parameters: string[] | undefined): boolean => 
 const lookupPiModel = (piProvider?: string, piModel?: string): Model<Api> | null => {
 	if (!piProvider || !piModel) return null;
 
+	// pi_provider/pi_model are dynamic strings from the plexus API,
+	// so we cast to bypass the branded type constraints on getModel.
+	// biome-ignore lint/suspicious/noExplicitAny: dynamic string args don't satisfy generic constraints
 	return getModel(piProvider as any, piModel as any) ?? null;
 };
 
