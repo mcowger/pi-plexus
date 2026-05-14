@@ -1,58 +1,41 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
-interface AuthJson {
-	plexus?: {
-		type: string;
-		key?: string;
-		baseUrl?: string;
-	};
-	[key: string]: unknown;
+const getConfigDir = (): string => join(getAgentDir(), "extensions", "plexus");
+const getConfigPath = (): string => join(getConfigDir(), "config.json");
+
+interface PlexusConfig {
+	baseUrl?: string;
 }
-
-const readAuthJson = async (): Promise<AuthJson | null> => {
-	try {
-		const authPath = join(getAgentDir(), "auth.json");
-		const content = await readFile(authPath, "utf8");
-		return JSON.parse(content) as AuthJson;
-	} catch {
-		return null;
-	}
-};
-
-export const getApiKey = async (): Promise<string | null> => {
-	const auth = await readAuthJson();
-	if (auth?.plexus?.type === "api_key" && auth.plexus.key) {
-		return auth.plexus.key;
-	}
-	return process.env.PLEXUS_API_KEY ?? null;
-};
-
-export const getRawBaseUrl = async (): Promise<string | null> => {
-	const auth = await readAuthJson();
-	if (auth?.plexus?.baseUrl) {
-		return auth.plexus.baseUrl;
-	}
-	return process.env.PLEXUS_BASE_URL ?? null;
-};
 
 const normalizeRoot = (raw: string): string => raw.replace(/\/+$/, "");
 
-export const getBaseUrl = async (): Promise<string | null> => {
-	const raw = await getRawBaseUrl();
-	if (!raw) return null;
-	return `${normalizeRoot(raw)}/v1`;
+export const saveBaseUrl = async (baseUrl: string): Promise<void> => {
+	await mkdir(getConfigDir(), { recursive: true });
+	const config: PlexusConfig = { baseUrl: normalizeRoot(baseUrl) };
+	await writeFile(getConfigPath(), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 };
 
-export const getModelsUrl = async (): Promise<string | null> => {
-	const raw = await getRawBaseUrl();
-	if (!raw) return null;
-	return `${normalizeRoot(raw)}/v1/models`;
+export const getRawBaseUrl = (): string | null => {
+	try {
+		if (existsSync(getConfigPath())) {
+			const config = JSON.parse(readFileSync(getConfigPath(), "utf8")) as PlexusConfig;
+			if (config.baseUrl) return config.baseUrl;
+		}
+	} catch {}
+	return process.env.PLEXUS_BASE_URL ?? null;
 };
 
-export const getBaseUrlSync = (): string | null => {
-	const raw = process.env.PLEXUS_BASE_URL ?? null;
-	if (!raw) return null;
-	return `${normalizeRoot(raw)}/v1`;
+export const getBaseUrl = (): string | null => {
+	const raw = getRawBaseUrl();
+	return raw ? `${normalizeRoot(raw)}/v1` : null;
 };
+
+export const getModelsUrl = (): string | null => {
+	const raw = getRawBaseUrl();
+	return raw ? `${normalizeRoot(raw)}/v1/models` : null;
+};
+
+export const getBaseUrlSync = (): string | null => getBaseUrl();
