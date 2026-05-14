@@ -1,7 +1,7 @@
 {
 	"name": "@mcowger/pi-plexus",
 	"author": "Matt Cowger",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Plexus AI provider extension package for pi",
 	"license": "MIT",
 	"type": "module",
