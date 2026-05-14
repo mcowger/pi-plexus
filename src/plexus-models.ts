@@ -1,3 +1,4 @@
+import { getModel } from "@earendil-works/pi-ai";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
 export interface PlexusModelArchitecture {
@@ -34,6 +35,9 @@ export interface PlexusApiModel {
 	pricing?: PlexusModelPricing;
 	supported_parameters?: string[];
 	top_provider?: PlexusTopProvider;
+	/** When set, look up the full model definition from pi's MODELS for maximum fidelity. */
+	pi_provider?: string;
+	pi_model?: string;
 }
 
 export interface PlexusApiResponse {
@@ -87,7 +91,45 @@ const inferReasoning = (supported_parameters: string[] | undefined): boolean => 
 	return supported_parameters.some((p) => REASONING_PARAMS.has(p));
 };
 
+/**
+ * Attempt to look up a model definition from pi's built-in MODELS registry
+ * using the pi_provider and pi_model hints from the plexus API.
+ * Returns null if either hint is missing or the model isn't found.
+ */
+const lookupPiModel = (piProvider?: string, piModel?: string): Model<Api> | null => {
+	if (!piProvider || !piModel) return null;
+
+	return getModel(piProvider as any, piModel as any) ?? null;
+};
+
 export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiModel => {
+	const piModelDef = lookupPiModel(apiModel.pi_provider, apiModel.pi_model);
+
+	// When pi's MODELS has this model, use its curated definition for maximum fidelity,
+	// overriding with plexus-specific fields (id, provider, baseUrl, cost from plexus pricing).
+	if (piModelDef) {
+		return {
+			id: apiModel.id,
+			name: apiModel.name ?? piModelDef.name ?? apiModel.id,
+			api: piModelDef.api,
+			provider: "plexus",
+			baseUrl,
+			reasoning: piModelDef.reasoning,
+			...(piModelDef.thinkingLevelMap && { thinkingLevelMap: piModelDef.thinkingLevelMap }),
+			input: piModelDef.input,
+			cost: {
+				input: parsePrice(apiModel.pricing?.prompt) || piModelDef.cost.input,
+				output: parsePrice(apiModel.pricing?.completion) || piModelDef.cost.output,
+				cacheRead: parsePrice(apiModel.pricing?.input_cache_read) || piModelDef.cost.cacheRead,
+				cacheWrite: parsePrice(apiModel.pricing?.input_cache_write) || piModelDef.cost.cacheWrite,
+			},
+			contextWindow: piModelDef.contextWindow,
+			maxTokens: piModelDef.maxTokens,
+			...(piModelDef.compat && { compat: piModelDef.compat }),
+		};
+	}
+
+	// No pi MODELS match – fall back to parsing the plexus API fields.
 	const contextWindow = apiModel.context_length ?? apiModel.top_provider?.context_length ?? DEFAULT_CONTEXT_WINDOW;
 
 	const maxTokens = apiModel.top_provider?.max_completion_tokens ?? contextWindow;

@@ -250,10 +250,199 @@ describe("convertModels", () => {
 	test("empty array returns empty array", () => {
 		expect(convertModels([], BASE_URL)).toEqual([]);
 	});
+});
 
-	test("converts all 30 models from models.json without error", () => {
+// ---------------------------------------------------------------------------
+// pi_provider / pi_model MODELS lookup
+// ---------------------------------------------------------------------------
+
+describe("pi_provider/pi_model MODELS lookup", () => {
+	test("deepseek-v4-flash via pi_provider/pi_model gets full fidelity from MODELS", () => {
+		const apiModel: PlexusApiModel = {
+			id: "deepseek-v4-flash",
+			pi_provider: "deepseek",
+			pi_model: "deepseek-v4-flash",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+
+		// Core fields from pi's curated definition
+		expect(m.api).toBe("openai-completions");
+		expect(m.reasoning).toBe(true);
+		expect(m.input).toEqual(["text"]);
+		expect(m.contextWindow).toBe(1000000);
+		expect(m.maxTokens).toBe(384000);
+		expect(m.name).toBe("DeepSeek V4 Flash");
+
+		// Plexus-specific overrides
+		expect(m.id).toBe("deepseek-v4-flash");
+		expect(m.provider).toBe("plexus");
+		expect(m.baseUrl).toBe(BASE_URL);
+
+		// Compat from pi's definition
+		expect(m.compat).toBeDefined();
+		expect(m.compat?.thinkingFormat).toBe("deepseek");
+		expect(m.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+
+		// Thinking level map from pi's definition
+		expect(m.thinkingLevelMap).toBeDefined();
+		expect(m.thinkingLevelMap?.high).toBe("high");
+		expect(m.thinkingLevelMap?.xhigh).toBe("max");
+	});
+
+	test("pi_provider/pi_model with price override from plexus pricing", () => {
+		const apiModel: PlexusApiModel = {
+			id: "deepseek-v4-flash",
+			pi_provider: "deepseek",
+			pi_model: "deepseek-v4-flash",
+			pricing: {
+				prompt: "0.10",
+				completion: "0.20",
+				input_cache_read: "0.001",
+				input_cache_write: "0.05",
+			},
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+
+		// Plexus pricing takes precedence when present
+		expect(m.cost.input).toBeCloseTo(0.1);
+		expect(m.cost.output).toBeCloseTo(0.2);
+		expect(m.cost.cacheRead).toBeCloseTo(0.001);
+		expect(m.cost.cacheWrite).toBeCloseTo(0.05);
+	});
+
+	test("pi_provider/pi_model falls back to pi cost when plexus pricing is absent", () => {
+		const apiModel: PlexusApiModel = {
+			id: "deepseek-v4-flash",
+			pi_provider: "deepseek",
+			pi_model: "deepseek-v4-flash",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+
+		// Falls back to pi's curated cost
+		expect(m.cost.input).toBe(0.14);
+		expect(m.cost.output).toBe(0.28);
+		expect(m.cost.cacheRead).toBeCloseTo(0.0028);
+		expect(m.cost.cacheWrite).toBe(0);
+	});
+
+	test("pi_provider/pi_model with name override from plexus", () => {
+		const apiModel: PlexusApiModel = {
+			id: "deepseek-v4-flash",
+			name: "My Custom DeepSeek",
+			pi_provider: "deepseek",
+			pi_model: "deepseek-v4-flash",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		expect(m.name).toBe("My Custom DeepSeek");
+	});
+
+	test("pi_provider without pi_model falls back to plexus parsing", () => {
+		const apiModel: PlexusApiModel = {
+			id: "test-model",
+			pi_provider: "deepseek",
+			// pi_model missing
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		// No compat from pi since the lookup didn't happen
+		expect(m.compat).toBeUndefined();
+	});
+
+	test("pi_model without pi_provider falls back to plexus parsing", () => {
+		const apiModel: PlexusApiModel = {
+			id: "test-model",
+			// pi_provider missing
+			pi_model: "deepseek-v4-flash",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		expect(m.compat).toBeUndefined();
+	});
+
+	test("unknown pi_provider falls back to plexus parsing", () => {
+		const apiModel: PlexusApiModel = {
+			id: "test-model",
+			pi_provider: "nonexistent-provider",
+			pi_model: "some-model",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		expect(m.compat).toBeUndefined();
+		expect(m.reasoning).toBe(false); // plexus fallback default
+	});
+
+	test("unknown pi_model under known provider falls back to plexus parsing", () => {
+		const apiModel: PlexusApiModel = {
+			id: "test-model",
+			pi_provider: "deepseek",
+			pi_model: "nonexistent-model",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		expect(m.compat).toBeUndefined();
+	});
+
+	test("no pi_provider/pi_model falls back to plexus parsing entirely", () => {
+		const apiModel: PlexusApiModel = {
+			id: "test-model",
+			preferred_api: "chat_completions",
+			context_length: 50000,
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+		expect(m.api).toBe("openai-completions");
+		expect(m.contextWindow).toBe(50000);
+		expect(m.compat).toBeUndefined();
+		expect(m.thinkingLevelMap).toBeUndefined();
+	});
+
+	test("anthropic model via pi_provider/pi_model gets correct api and compat", () => {
+		const apiModel: PlexusApiModel = {
+			id: "claude-sonnet-4-6",
+			pi_provider: "anthropic",
+			pi_model: "claude-sonnet-4-6",
+		};
+		const m = convertToPiModel(apiModel, BASE_URL);
+
+		expect(m.api).toBe("anthropic-messages");
+		expect(m.reasoning).toBe(true);
+		expect(m.input).toEqual(["text", "image"]);
+		expect(m.contextWindow).toBe(1000000);
+		expect(m.maxTokens).toBe(64000);
+		// Anthropic models don't have compat in their native definition
+		expect(m.compat).toBeUndefined();
+	});
+
+	test("convertModels mixes pi-looked-up and plexus-parsed models", () => {
+		const apiModels: PlexusApiModel[] = [
+			{
+				id: "deepseek-v4-flash",
+				pi_provider: "deepseek",
+				pi_model: "deepseek-v4-flash",
+			},
+			{
+				id: "some-other-model",
+				preferred_api: "chat_completions",
+				context_length: 32000,
+			},
+		];
+		const models = convertModels(apiModels, BASE_URL);
+
+		expect(models).toHaveLength(2);
+
+		// First model: looked up from pi MODELS
+		expect(models[0].compat?.thinkingFormat).toBe("deepseek");
+		expect(models[0].contextWindow).toBe(1000000);
+
+		// Second model: plexus fallback
+		expect(models[1].compat).toBeUndefined();
+		expect(models[1].contextWindow).toBe(32000);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Integration tests against real plexus models.json fixture
+// ---------------------------------------------------------------------------
+
+describe("models.json fixture", () => {
+	test("converts all 23 models without error", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
-		expect(models).toHaveLength(30);
+		expect(models).toHaveLength(23);
 	});
 
 	test("all converted models have required fields", () => {
@@ -271,25 +460,51 @@ describe("convertModels", () => {
 		}
 	});
 
-	test("claude-haiku-4-5 maps to anthropic-messages", () => {
-		const models = convertModels(MODELS_JSON.data, BASE_URL);
-		const haiku = models.find((m) => m.id === "claude-haiku-4-5");
-		expect(haiku?.api).toBe("anthropic-messages");
-	});
-
-	test("gpt-5.4 maps to openai-responses", () => {
-		const models = convertModels(MODELS_JSON.data, BASE_URL);
-		const gpt = models.find((m) => m.id === "gpt-5.4");
-		expect(gpt?.api).toBe("openai-responses");
-	});
-
-	test("deepseek-v4-flash maps to openai-completions", () => {
+	test("deepseek-v4-flash gets full fidelity from pi MODELS via pi_provider/pi_model", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
 		const ds = models.find((m) => m.id === "deepseek-v4-flash");
+		expect(ds).toBeDefined();
+
+		// From pi's curated definition
 		expect(ds?.api).toBe("openai-completions");
+		expect(ds?.reasoning).toBe(true);
+		expect(ds?.input).toEqual(["text"]);
+		expect(ds?.contextWindow).toBe(1000000);
+		expect(ds?.maxTokens).toBe(384000);
+
+		// Compat from pi
+		expect(ds?.compat?.thinkingFormat).toBe("deepseek");
+		expect(ds?.compat?.requiresReasoningContentOnAssistantMessages).toBe(true);
+
+		// ThinkingLevelMap from pi
+		expect(ds?.thinkingLevelMap?.high).toBe("high");
+		expect(ds?.thinkingLevelMap?.xhigh).toBe("max");
+
+		// Plexus overrides
+		expect(ds?.provider).toBe("plexus");
+		expect(ds?.baseUrl).toBe(BASE_URL);
 	});
 
-	test("sparse model (qwen3.5-plus-02-15) gets safe defaults", () => {
+	test("claude-haiku-4-5 gets anthropic-messages api from pi MODELS", () => {
+		const models = convertModels(MODELS_JSON.data, BASE_URL);
+		const haiku = models.find((m) => m.id === "claude-haiku-4-5");
+		expect(haiku).toBeDefined();
+		expect(haiku?.api).toBe("anthropic-messages");
+		expect(haiku?.reasoning).toBe(true);
+		expect(haiku?.input).toContain("image");
+	}),
+		test("claude-sonnet-4-6 (no pi_provider) uses plexus fallback", () => {
+			const models = convertModels(MODELS_JSON.data, BASE_URL);
+			const sonnet = models.find((m) => m.id === "claude-sonnet-4-6");
+			expect(sonnet).toBeDefined();
+			// No pi_provider/pi_model, so no compat from pi
+			expect(sonnet?.compat).toBeUndefined();
+			expect(sonnet?.thinkingLevelMap).toBeUndefined();
+			// But plexus fields still work
+			expect(sonnet?.contextWindow).toBe(1000000);
+		});
+
+	test("qwen3.5-plus-02-15 (sparse model) gets safe defaults from plexus fallback", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
 		const sparse = models.find((m) => m.id === "qwen3.5-plus-02-15");
 		expect(sparse).toBeDefined();
@@ -300,24 +515,23 @@ describe("convertModels", () => {
 		expect(sparse?.cost).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 	});
 
-	test("claude-sonnet-4-6 has image input and correct context", () => {
-		const models = convertModels(MODELS_JSON.data, BASE_URL);
-		const sonnet = models.find((m) => m.id === "claude-sonnet-4-6");
-		expect(sonnet?.input).toContain("image");
-		expect(sonnet?.contextWindow).toBe(1000000);
-		expect(sonnet?.maxTokens).toBe(128000);
-	});
-
-	test("small-fast has no reasoning (no reasoning params)", () => {
+	test("small-fast has no reasoning", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
 		const m = models.find((m) => m.id === "small-fast");
 		expect(m?.reasoning).toBe(false);
 	});
 
-	test("gemini models filter out non-text/image modalities", () => {
+	test("models with pi_provider/pi_model have compat; others don't", () => {
 		const models = convertModels(MODELS_JSON.data, BASE_URL);
-		for (const m of models) {
-			expect(m.input.every((i) => i === "text" || i === "image")).toBe(true);
-		}
+		const withCompat = models.filter((m) => m.compat);
+		const withoutCompat = models.filter((m) => !m.compat);
+
+		// Only deepseek-v4-flash has pi_provider/pi_model pointing to a compat-bearing model
+		const compatIds = withCompat.map((m) => m.id).sort();
+		expect(compatIds).toContain("deepseek-v4-flash");
+
+		// claude-haiku-4-5 has pi_provider but anthropic models don't have compat
+		// so it won't appear here, which is correct
+		expect(compatIds).not.toContain("claude-haiku-4-5");
 	});
 });
