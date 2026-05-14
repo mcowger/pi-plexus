@@ -1,6 +1,6 @@
 # pi-plexus
 
-A [pi](https://github.com/earendil-works/pi-mono) extension that adds Plexus AI as a provider, dynamically discovering models from your Plexus instance.
+A [pi](https://github.com/earendil-works/pi-mono) extension that adds [Plexus](https://github.com/mcowger/plexus) as a provider, dynamically discovering models from your Plexus instance.
 
 ## Requirements
 
