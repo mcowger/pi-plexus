@@ -228,6 +228,9 @@ const adjustBaseUrl = (baseUrl: string, api: Api): string => {
 	if (api === "anthropic-messages") {
 		return baseUrl.replace(/\/v1\/?$/, "");
 	}
+	if (api === "google-generative-ai") {
+		return baseUrl.replace(/\/v1\/?$/, "/v1beta");
+	}
 	return baseUrl;
 };
 

@@ -455,7 +455,13 @@ describe("models.json fixture", () => {
 		for (const m of models) {
 			expect(m.id).toBeTruthy();
 			expect(m.provider).toBe("plexus");
-			expect(m.baseUrl).toBe(m.api === "anthropic-messages" ? BASE_URL.replace(/\/v1\/?$/, "") : BASE_URL);
+			const expectedBaseUrl =
+				m.api === "anthropic-messages"
+					? BASE_URL.replace(/\/v1\/?$/, "")
+					: m.api === "google-generative-ai"
+						? BASE_URL.replace(/\/v1\/?$/, "/v1beta")
+						: BASE_URL;
+			expect(m.baseUrl).toBe(expectedBaseUrl);
 			expect(typeof m.contextWindow).toBe("number");
 			expect(typeof m.maxTokens).toBe("number");
 			expect(m.contextWindow).toBeGreaterThan(0);
