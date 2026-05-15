@@ -8,29 +8,35 @@ const getConfigPath = (): string => join(getConfigDir(), "config.json");
 
 interface PlexusConfig {
 	baseUrl?: string;
+	defaultModel?: string;
 }
 
 const normalizeRoot = (raw: string): string => raw.replace(/\/+$/, "");
 
-export const saveBaseUrl = async (baseUrl: string): Promise<void> => {
+export const getConfigSync = (): PlexusConfig => {
+	try {
+		if (existsSync(getConfigPath())) {
+			return JSON.parse(readFileSync(getConfigPath(), "utf8")) as PlexusConfig;
+		}
+	} catch {}
+	return {};
+};
+
+export const saveBaseUrl = async (baseUrl: string, defaultModel?: string): Promise<void> => {
 	await mkdir(getConfigDir(), { recursive: true });
-	const config: PlexusConfig = { baseUrl: normalizeRoot(baseUrl) };
+	const existing = getConfigSync();
+	const config: PlexusConfig = {
+		...existing,
+		baseUrl: normalizeRoot(baseUrl),
+		...(defaultModel !== undefined && { defaultModel }),
+	};
 	await writeFile(getConfigPath(), `${JSON.stringify(config, null, 2)}\n`, "utf8");
 };
 
 export const getRawBaseUrl = (): string | null => {
-	try {
-		if (existsSync(getConfigPath())) {
-			const config = JSON.parse(readFileSync(getConfigPath(), "utf8")) as PlexusConfig;
-			if (config.baseUrl) return config.baseUrl;
-		}
-	} catch {}
+	const config = getConfigSync();
+	if (config.baseUrl) return config.baseUrl;
 	return process.env.PLEXUS_BASE_URL ?? null;
-};
-
-export const getBaseUrl = (): string | null => {
-	const raw = getRawBaseUrl();
-	return raw ? `${normalizeRoot(raw)}/v1` : null;
 };
 
 export const getModelsUrl = (): string | null => {
@@ -38,4 +44,12 @@ export const getModelsUrl = (): string | null => {
 	return raw ? `${normalizeRoot(raw)}/v1/models` : null;
 };
 
-export const getBaseUrlSync = (): string | null => getBaseUrl();
+export const getBaseUrlSync = (): string | null => {
+	const raw = getRawBaseUrl();
+	return raw ? `${normalizeRoot(raw)}/v1` : null;
+};
+
+export const getDefaultModel = (): string | null => {
+	const config = getConfigSync();
+	return config.defaultModel ?? null;
+};
