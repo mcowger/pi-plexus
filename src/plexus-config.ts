@@ -49,6 +49,9 @@ export const getBaseUrlSync = (): string | null => {
 	return raw ? `${normalizeRoot(raw)}/v1` : null;
 };
 
+// Alias for backward compatibility
+export const getBaseUrl = getBaseUrlSync;
+
 export const getDefaultModel = (): string | null => {
 	const config = getConfigSync();
 	return config.defaultModel ?? null;
