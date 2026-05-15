@@ -74,15 +74,17 @@ export default function plexusExtension(pi: ExtensionAPI) {
 
 		log("session_start", { hasApiKey: !!apiKey, baseUrl });
 
-		// Set default model from config (if configured and exists)
-		await setDefaultModel(ctx);
-
 		if (!apiKey || !baseUrl) {
 			log("session_start: no auth configured, skipping refresh");
+			// Still try to set default model even without auth
+			await setDefaultModel(ctx);
 			return;
 		}
 
 		await attemptLiveRefresh(pi, apiKey);
+
+		// Set default model after refresh (when fresh models are loaded)
+		await setDefaultModel(ctx);
 	});
 
 	pi.registerCommand("plexus", {
