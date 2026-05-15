@@ -45,6 +45,10 @@ const setDefaultModel = async (ctx: { modelRegistry: ExtensionAPI["modelRegistry
 	const defaultModelId = getDefaultModel();
 	if (!defaultModelId) return;
 
+	// Debug: log what models are in the registry
+	const allModels = ctx.modelRegistry.list(PLEXUS_PROVIDER);
+	log("setDefaultModel: available models", { defaultModelId, availableModels: allModels.map(m => m.id).slice(0, 10) });
+
 	const model = ctx.modelRegistry.find(PLEXUS_PROVIDER, defaultModelId);
 	if (!model) {
 		log("setDefaultModel: model not found in registry", { defaultModelId });
