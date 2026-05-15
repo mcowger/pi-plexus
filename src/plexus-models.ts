@@ -224,6 +224,13 @@ const resolveCompat = (
 	return piModel.compat;
 };
 
+const adjustBaseUrl = (baseUrl: string, api: Api): string => {
+	if (api === "anthropic-messages") {
+		return baseUrl.replace(/\/v1\/?$/, "");
+	}
+	return baseUrl;
+};
+
 export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiModel => {
 	const piModelDef = lookupPiModel(apiModel.pi_provider, apiModel.pi_model);
 
@@ -236,7 +243,7 @@ export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiM
 			name: apiModel.name ?? piModelDef.name ?? apiModel.id,
 			api: piModelDef.api,
 			provider: "plexus",
-			baseUrl,
+			baseUrl: adjustBaseUrl(baseUrl, piModelDef.api),
 			reasoning: piModelDef.reasoning,
 			...(piModelDef.thinkingLevelMap && { thinkingLevelMap: piModelDef.thinkingLevelMap }),
 			input: piModelDef.input,
@@ -256,13 +263,14 @@ export const convertToPiModel = (apiModel: PlexusApiModel, baseUrl: string): PiM
 	const contextWindow = apiModel.context_length ?? apiModel.top_provider?.context_length ?? DEFAULT_CONTEXT_WINDOW;
 
 	const maxTokens = apiModel.top_provider?.max_completion_tokens ?? contextWindow;
+	const fallbackApi = mapPreferredApi(apiModel.preferred_api);
 
 	return {
 		id: apiModel.id,
 		name: apiModel.name ?? apiModel.id,
-		api: mapPreferredApi(apiModel.preferred_api),
+		api: fallbackApi,
 		provider: "plexus",
-		baseUrl,
+		baseUrl: adjustBaseUrl(baseUrl, fallbackApi),
 		reasoning: inferReasoning(apiModel.supported_parameters),
 		input: mapInputModalities(apiModel.architecture),
 		cost: {
