@@ -16,7 +16,10 @@ const createProviderConfig = (models: PiModel[], baseUrl: string): ProviderConfi
 	models,
 });
 
-const attemptLiveRefresh = async (pi: ExtensionAPI, apiKey: string): Promise<void> => {
+// Store current models globally for use by setDefaultModel
+let currentModels: PiModel[] = [];
+
+const attemptLiveRefresh = async (pi: ExtensionAPI, apiKey: string, setDefault = true): Promise<void> => {
 	const baseUrl = getBaseUrl();
 	const modelsUrl = getModelsUrl();
 
@@ -34,28 +37,44 @@ const attemptLiveRefresh = async (pi: ExtensionAPI, apiKey: string): Promise<voi
 		log("attemptLiveRefresh: fetched models", { count: models.length, sampleModelBaseUrl: models[0]?.baseUrl });
 
 		await Promise.all([writeCachedModels(models), writeRawResponse(raw)]);
+		currentModels = models;
 		pi.registerProvider(PLEXUS_PROVIDER, createProviderConfig(models, baseUrl));
 		log("attemptLiveRefresh: provider registered");
+
+		// Set default model after registering new provider
+		if (setDefault) {
+			await setDefaultModel(pi, models);
+		}
 	} catch (error) {
 		log("attemptLiveRefresh: fetch failed", { error: String(error) });
 	}
 };
 
-const setDefaultModel = async (ctx: { modelRegistry: ExtensionAPI["modelRegistry"]; setModel: ExtensionAPI["setModel"] }): Promise<void> => {
+const setDefaultModel = async (pi: ExtensionAPI, models?: PiModel[]): Promise<void> => {
 	const defaultModelId = getDefaultModel();
 	if (!defaultModelId) return;
 
-	// Debug: log what models are in the registry
-	const allModels = ctx.modelRegistry.list(PLEXUS_PROVIDER);
-	log("setDefaultModel: available models", { defaultModelId, availableModels: allModels.map(m => m.id).slice(0, 10) });
-
-	const model = ctx.modelRegistry.find(PLEXUS_PROVIDER, defaultModelId);
-	if (!model) {
-		log("setDefaultModel: model not found in registry", { defaultModelId });
+	// Use provided models or fall back to currentModels (set during refresh)
+	const modelList = models ?? currentModels;
+	if (!modelList || modelList.length === 0) {
+		log("setDefaultModel: no models available", { defaultModelId });
 		return;
 	}
 
-	const success = await ctx.setModel(model);
+	log("setDefaultModel: searching for model", {
+		defaultModelId,
+		availableModels: modelList.slice(0, 5).map(m => m.id),
+	});
+
+	// Find model by ID in our list
+	const model = modelList.find(m => m.id === defaultModelId);
+
+	if (!model) {
+		log("setDefaultModel: model not found in list", { defaultModelId });
+		return;
+	}
+
+	const success = await pi.setModel(model);
 	log("setDefaultModel", { defaultModelId, success });
 };
 
@@ -71,6 +90,7 @@ export default function plexusExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerProvider(PLEXUS_PROVIDER, createProviderConfig(startupModels, startupBaseUrl));
+	currentModels = startupModels;
 
 	pi.on("session_start", async (_event, ctx) => {
 		const apiKey = await ctx.modelRegistry.authStorage.getApiKey(PLEXUS_PROVIDER);
@@ -81,14 +101,11 @@ export default function plexusExtension(pi: ExtensionAPI) {
 		if (!apiKey || !baseUrl) {
 			log("session_start: no auth configured, skipping refresh");
 			// Still try to set default model even without auth
-			await setDefaultModel(ctx);
+			await setDefaultModel(pi, startupModels);
 			return;
 		}
 
-		await attemptLiveRefresh(pi, apiKey);
-
-		// Set default model after refresh (when fresh models are loaded)
-		await setDefaultModel(ctx);
+		await attemptLiveRefresh(pi, apiKey, true);
 	});
 
 	pi.registerCommand("plexus", {
@@ -117,10 +134,9 @@ export default function plexusExtension(pi: ExtensionAPI) {
 				log("login: saved", { baseUrl: baseUrl.trim(), defaultModel: defaultModelTrimmed });
 				ctx.ui.notify("Plexus credentials saved", "info");
 
-				await attemptLiveRefresh(pi, apiKey.trim());
+				await attemptLiveRefresh(pi, apiKey.trim(), false);
 
-				// Set default model if configured
-				await setDefaultModel(ctx);
+				// Set default model after refresh (attemptLiveRefresh handles it when setDefault=true)
 				return;
 			}
 
@@ -151,8 +167,8 @@ export default function plexusExtension(pi: ExtensionAPI) {
 					log("refresh command: done", { count: models.length });
 					ctx.ui.notify(`Refreshed ${models.length} Plexus models`, "info");
 
-					// Re-apply default model if configured
-					await setDefaultModel(ctx);
+					// Re-apply default model after refresh
+					await setDefaultModel(pi, currentModels);
 				} catch (error) {
 					log("refresh command: failed", { error: String(error) });
 					ctx.ui.notify(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`, "error");

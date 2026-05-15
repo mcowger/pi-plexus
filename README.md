@@ -32,8 +32,9 @@ Once installed, run the login command inside pi:
 You will be prompted for:
 1. **Base URL** — the root URL of your Plexus instance, e.g. `https://plexus.example.com` (no `/v1` suffix needed)
 2. **API key** — your Plexus API key
+3. **Default model** (optional) — the model ID to use by default, e.g. `glm-5.1` (use the raw model name, not the `plexus/` prefix)
 
-Credentials are stored in `~/.pi/agent/auth.json` (API key, managed by pi) and `~/.pi/agent/extensions/plexus/config.json` (base URL).
+Credentials are stored in `~/.pi/agent/auth.json` (API key, managed by pi) and `~/.pi/agent/extensions/plexus/config.json` (base URL and default model).
 
 ### Environment variables
 
