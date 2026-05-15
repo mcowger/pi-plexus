@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ProviderConfig } from "@earendil-works/pi-coding-agent";
 import type { Api } from "@earendil-works/pi-ai";
 import { readCachedModelsSync, writeCachedModels, writeRawResponse } from "./src/plexus-cache.js";
-import { getBaseUrl, getBaseUrlSync, getModelsUrl, saveBaseUrl } from "./src/plexus-config.js";
+import { getBaseUrl, getBaseUrlSync, getDefaultModel, getModelsUrl, saveBaseUrl } from "./src/plexus-config.js";
 import { log } from "./src/plexus-log.js";
 import { convertModels, fetchPlexusModels } from "./src/plexus-models.js";
 import type { PiModel } from "./src/plexus-models.js";
@@ -41,6 +41,20 @@ const attemptLiveRefresh = async (pi: ExtensionAPI, apiKey: string): Promise<voi
 	}
 };
 
+const setDefaultModel = async (ctx: { modelRegistry: ExtensionAPI["modelRegistry"]; setModel: ExtensionAPI["setModel"] }): Promise<void> => {
+	const defaultModelId = getDefaultModel();
+	if (!defaultModelId) return;
+
+	const model = ctx.modelRegistry.find(PLEXUS_PROVIDER, defaultModelId);
+	if (!model) {
+		log("setDefaultModel: model not found in registry", { defaultModelId });
+		return;
+	}
+
+	const success = await ctx.setModel(model);
+	log("setDefaultModel", { defaultModelId, success });
+};
+
 export default function plexusExtension(pi: ExtensionAPI) {
 	const cached = readCachedModelsSync();
 	const startupBaseUrl = getBaseUrlSync() ?? "http://localhost/v1";
@@ -59,6 +73,9 @@ export default function plexusExtension(pi: ExtensionAPI) {
 		const baseUrl = getBaseUrl();
 
 		log("session_start", { hasApiKey: !!apiKey, baseUrl });
+
+		// Set default model from config (if configured and exists)
+		await setDefaultModel(ctx);
 
 		if (!apiKey || !baseUrl) {
 			log("session_start: no auth configured, skipping refresh");
@@ -84,13 +101,20 @@ export default function plexusExtension(pi: ExtensionAPI) {
 				const apiKey = await ctx.ui.input("Plexus API key");
 				if (!apiKey) return;
 
-				await saveBaseUrl(baseUrl.trim());
+				// Prompt for default model (optional)
+				const defaultModel = await ctx.ui.input("Default model (optional)", "");
+				const defaultModelTrimmed = defaultModel?.trim() || undefined;
+
+				await saveBaseUrl(baseUrl.trim(), defaultModelTrimmed);
 				ctx.modelRegistry.authStorage.set(PLEXUS_PROVIDER, { type: "api_key", key: apiKey.trim() });
 
-				log("login: saved", { baseUrl: baseUrl.trim() });
+				log("login: saved", { baseUrl: baseUrl.trim(), defaultModel: defaultModelTrimmed });
 				ctx.ui.notify("Plexus credentials saved", "info");
 
 				await attemptLiveRefresh(pi, apiKey.trim());
+
+				// Set default model if configured
+				await setDefaultModel(ctx);
 				return;
 			}
 
@@ -120,6 +144,9 @@ export default function plexusExtension(pi: ExtensionAPI) {
 
 					log("refresh command: done", { count: models.length });
 					ctx.ui.notify(`Refreshed ${models.length} Plexus models`, "info");
+
+					// Re-apply default model if configured
+					await setDefaultModel(ctx);
 				} catch (error) {
 					log("refresh command: failed", { error: String(error) });
 					ctx.ui.notify(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`, "error");
