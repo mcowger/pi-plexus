@@ -22,7 +22,7 @@
 		"LICENSE"
 	],
 	"scripts": {
-		"postinstall": "lefthook install",
+		"postinstall": "command -v lefthook >/dev/null 2>&1 && lefthook install || true",
 		"check": "bunx tsc --noEmit",
 		"test": "bun test",
 		"format": "biome format --write .",
